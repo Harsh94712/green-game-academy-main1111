@@ -7,16 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Trophy, Medal, Crown, ArrowLeft, TrendingUp, Users, Star } from 'lucide-react';
+import { getLeaderboard, LeaderboardEntry } from '@/lib/api';
 
-interface Player {
+interface Player extends LeaderboardEntry {
   id: string;
-  name: string;
-  points: number;
-  level: number;
-  streak: number;
-  badges: number;
-  avatar: string;
-  lastActivity: string;
   hasStarted: boolean;
 }
 
@@ -26,118 +20,43 @@ const Leaderboard = () => {
   const { progress } = useGame();
   const [activePlayers, setActivePlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedPeriod, setSelectedPeriod] = useState<'weekly' | 'monthly'>('weekly');
 
-  // Simulate loading active players from a database
+  // Load leaderboard data from API
   useEffect(() => {
-    const loadActivePlayers = () => {
-      // Get players from localStorage (simulating a database)
-      const storedPlayers = localStorage.getItem('activePlayers');
-      let players: Player[] = storedPlayers ? JSON.parse(storedPlayers) : [];
-
-      // Add some sample active players if none exist
-      if (players.length === 0) {
-        players = [
-          {
-            id: '1',
-            name: 'Emma Green',
-            points: 2450,
-            level: 12,
-            streak: 28,
-            badges: 15,
-            avatar: '👩‍🌾',
-            lastActivity: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-            hasStarted: true
-          },
-          {
-            id: '2',
-            name: 'Alex Rivers',
-            points: 2380,
-            level: 11,
-            streak: 25,
-            badges: 13,
-            avatar: '👨‍🔬',
-            lastActivity: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-            hasStarted: true
-          },
-          {
-            id: '3',
-            name: 'Maya Forest',
-            points: 2290,
-            level: 11,
-            streak: 22,
-            badges: 12,
-            avatar: '👩‍🎓',
-            lastActivity: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-            hasStarted: true
-          },
-          {
-            id: '4',
-            name: 'Sam Ocean',
-            points: 2100,
-            level: 10,
-            streak: 18,
-            badges: 10,
-            avatar: '👨‍💼',
-            lastActivity: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-            hasStarted: true
-          }
-        ];
-        localStorage.setItem('activePlayers', JSON.stringify(players));
-      }
-
-      // Add current user if they have started playing
-      if (user && progress.totalPoints > 0) {
-        const currentUser: Player = {
-          id: user.id || 'current-user',
-          name: user.name || 'You',
-          points: progress.totalPoints,
-          level: progress.level,
-          streak: progress.streak,
-          badges: progress.badges.filter(b => b.earned).length,
-          avatar: '🌱',
-          lastActivity: new Date().toISOString(),
-          hasStarted: true
-        };
-
-        // Update or add current user
-        const existingUserIndex = players.findIndex(p => p.id === currentUser.id);
-        if (existingUserIndex >= 0) {
-          players[existingUserIndex] = currentUser;
+    const loadLeaderboard = async () => {
+      setLoading(true);
+      try {
+        const response = await getLeaderboard(selectedPeriod);
+        if (response.success && response.leaderboard) {
+          const players: Player[] = response.leaderboard.map((entry, index) => ({
+            ...entry,
+            id: entry.email, // Use email as ID for now
+            hasStarted: true,
+            rank: index + 1
+          }));
+          setActivePlayers(players);
         } else {
-          players.push(currentUser);
+          throw new Error('Failed to load leaderboard');
         }
+      } catch (error) {
+        console.error('Error loading leaderboard:', error);
+        // Fallback to empty array if API fails
+        setActivePlayers([]);
+      } finally {
+        setLoading(false);
       }
-
-      // Filter only players who have started (points > 0) and sort by points
-      const activePlayersOnly = players
-        .filter(player => player.hasStarted && player.points > 0)
-        .sort((a, b) => b.points - a.points)
-        .map((player, index) => ({ ...player, rank: index + 1 }));
-
-      setActivePlayers(activePlayersOnly);
-      setLoading(false);
     };
 
-    loadActivePlayers();
-  }, [user, progress]);
+    loadLeaderboard();
+  }, [selectedPeriod]);
 
-  // Filter players by time period
-  const getWeeklyLeaders = () => {
-    const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    return activePlayers.filter(player => 
-      new Date(player.lastActivity) >= oneWeekAgo
-    ).slice(0, 10);
+  // Get leaders based on selected period
+  const getCurrentLeaders = () => {
+    return activePlayers.slice(0, 10);
   };
 
-  const getMonthlyLeaders = () => {
-    const oneMonthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    return activePlayers.filter(player => 
-      new Date(player.lastActivity) >= oneMonthAgo
-    ).slice(0, 10);
-  };
-
-  const weeklyLeaders = getWeeklyLeaders();
-  const monthlyLeaders = getMonthlyLeaders();
+  const currentLeaders = getCurrentLeaders();
 
   const getRankIcon = (rank: number) => {
     switch (rank) {
@@ -217,7 +136,7 @@ const Leaderboard = () => {
         )}
 
         {/* Leaderboard Tabs */}
-        <Tabs defaultValue="weekly" className="space-y-6">
+        <Tabs value={selectedPeriod} onValueChange={(value) => setSelectedPeriod(value as 'weekly' | 'monthly')} className="space-y-6">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="weekly">Weekly Leaders</TabsTrigger>
             <TabsTrigger value="monthly">Monthly Leaders</TabsTrigger>
@@ -230,7 +149,7 @@ const Leaderboard = () => {
                   <TrendingUp className="h-5 w-5 mr-2" />
                   This Week's Top Performers
                   <Badge variant="secondary" className="ml-2">
-                    {weeklyLeaders.length} active players
+                    {currentLeaders.length} active players
                   </Badge>
                 </CardTitle>
               </CardHeader>
@@ -240,7 +159,7 @@ const Leaderboard = () => {
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto"></div>
                     <p className="text-gray-600 mt-2">Loading leaderboard...</p>
                   </div>
-                ) : weeklyLeaders.length === 0 ? (
+                ) : currentLeaders.length === 0 ? (
                   <div className="text-center py-8">
                     <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                     <h3 className="text-lg font-semibold text-gray-600 mb-2">No Active Players This Week</h3>
@@ -248,7 +167,7 @@ const Leaderboard = () => {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {weeklyLeaders.map((leader) => {
+                    {currentLeaders.map((leader) => {
                       const isCurrentUser = leader.name === (user?.name || 'You');
                       return (
                         <div
@@ -266,7 +185,7 @@ const Leaderboard = () => {
                                 {isCurrentUser && <Badge className="ml-2" variant="secondary">You</Badge>}
                               </h3>
                               <p className="text-sm text-gray-600">
-                                Level {leader.level} • {leader.streak} day streak
+                                Level {leader.level} • {leader.streak} day streak • {leader.badges} badges
                               </p>
                             </div>
                           </div>
@@ -274,7 +193,9 @@ const Leaderboard = () => {
                             <div className="text-lg font-bold text-green-600">
                               {leader.points.toLocaleString()} pts
                             </div>
-                            <div className="text-sm text-gray-500">this week</div>
+                            <div className="text-sm text-gray-500">
+                              {leader.challengesCompleted} challenges • {leader.quizzesCompleted} quizzes
+                            </div>
                           </div>
                         </div>
                       );
@@ -292,7 +213,7 @@ const Leaderboard = () => {
                   <Trophy className="h-5 w-5 mr-2" />
                   Monthly Champions
                   <Badge variant="secondary" className="ml-2">
-                    {monthlyLeaders.length} active players
+                    {currentLeaders.length} active players
                   </Badge>
                 </CardTitle>
               </CardHeader>
@@ -302,7 +223,7 @@ const Leaderboard = () => {
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto"></div>
                     <p className="text-gray-600 mt-2">Loading leaderboard...</p>
                   </div>
-                ) : monthlyLeaders.length === 0 ? (
+                ) : currentLeaders.length === 0 ? (
                   <div className="text-center py-8">
                     <Star className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                     <h3 className="text-lg font-semibold text-gray-600 mb-2">No Active Players This Month</h3>
@@ -310,7 +231,7 @@ const Leaderboard = () => {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {monthlyLeaders.map((leader) => {
+                    {currentLeaders.map((leader) => {
                       const isCurrentUser = leader.name === (user?.name || 'You');
                       return (
                         <div
@@ -328,7 +249,7 @@ const Leaderboard = () => {
                                 {isCurrentUser && <Badge className="ml-2" variant="secondary">You</Badge>}
                               </h3>
                               <p className="text-sm text-gray-600">
-                                Level {leader.level} • {leader.badges} badges
+                                Level {leader.level} • {leader.badges} badges • {leader.streak} day streak
                               </p>
                             </div>
                           </div>
@@ -336,7 +257,9 @@ const Leaderboard = () => {
                             <div className="text-lg font-bold text-green-600">
                               {leader.points.toLocaleString()} pts
                             </div>
-                            <div className="text-sm text-gray-500">this month</div>
+                            <div className="text-sm text-gray-500">
+                              {leader.challengesCompleted} challenges • {leader.quizzesCompleted} quizzes
+                            </div>
                           </div>
                         </div>
                       );

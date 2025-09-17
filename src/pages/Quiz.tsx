@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGame } from '@/contexts/GameContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { CheckCircle, XCircle, ArrowLeft } from 'lucide-react';
+import { getQuizzes, getQuizById, submitQuiz, Quiz } from '@/lib/api';
 
 interface Question {
   id: number;
@@ -25,8 +26,52 @@ const Quiz = () => {
   const [answers, setAnswers] = useState<number[]>([]);
   const [showResult, setShowResult] = useState(false);
   const [quizComplete, setQuizComplete] = useState(false);
+  const [quiz, setQuiz] = useState<Quiz | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const questions: Question[] = [
+  // Load quiz data from API
+  useEffect(() => {
+    const loadQuiz = async () => {
+      try {
+        setLoading(true);
+        // For now, we'll load the first available quiz
+        // In a real app, you might want to pass a quiz ID via URL params
+        const response = await getQuizzes();
+        if (response.success && response.quizzes && response.quizzes.length > 0) {
+          const firstQuiz = response.quizzes[0];
+          const quizResponse = await getQuizById(firstQuiz._id);
+          if (quizResponse.success && quizResponse.quiz) {
+            setQuiz(quizResponse.quiz);
+          } else {
+            throw new Error('Failed to load quiz details');
+          }
+        } else {
+          throw new Error('No quizzes available');
+        }
+      } catch (error) {
+        console.error('Error loading quiz:', error);
+        setError('Failed to load quiz. Please try again.');
+        // Fallback to hardcoded questions if API fails
+        setQuiz({
+          _id: 'fallback',
+          title: 'Environmental Knowledge Quiz',
+          description: 'Test your knowledge about environmental issues',
+          category: 'environment',
+          totalPoints: 100,
+          timeLimit: 30,
+          questions: getFallbackQuestions()
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadQuiz();
+  }, []);
+
+  // Fallback questions if API fails
+  const getFallbackQuestions = (): Question[] => [
     // Environment & Climate
     {
       id: 1,
@@ -278,6 +323,9 @@ const Quiz = () => {
     }
   ];
 
+  // Get current questions from quiz or fallback
+  const questions = quiz?.questions || getFallbackQuestions();
+
   const handleAnswerSelect = (answerIndex: number) => {
     setSelectedAnswer(answerIndex);
   };
@@ -295,8 +343,16 @@ const Quiz = () => {
         setSelectedAnswer(null);
         setShowResult(false);
       } else {
-        // Award points for completing quiz
+        // Submit quiz to backend
         const score = calculateScore();
+        if (quiz && quiz._id !== 'fallback') {
+          try {
+            await submitQuiz(quiz._id, answers);
+          } catch (error) {
+            console.error('Error submitting quiz:', error);
+            // Still complete locally if backend fails
+          }
+        }
         completeQuiz(score, questions.length);
         setQuizComplete(true);
       }
@@ -354,6 +410,65 @@ const Quiz = () => {
     );
   }
 
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-4">
+        <div className="max-w-2xl mx-auto">
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto"></div>
+            <p className="text-gray-600 mt-2">Loading quiz...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-4">
+        <div className="max-w-2xl mx-auto">
+          <Card>
+            <CardHeader className="text-center">
+              <CardTitle className="text-red-600">Error Loading Quiz</CardTitle>
+            </CardHeader>
+            <CardContent className="text-center space-y-4">
+              <p className="text-gray-600">{error}</p>
+              <Button onClick={() => window.location.reload()}>
+                Try Again
+              </Button>
+              <Button onClick={() => navigate('/dashboard')} variant="outline">
+                Back to Dashboard
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // Show no quiz available
+  if (!quiz) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-4">
+        <div className="max-w-2xl mx-auto">
+          <Card>
+            <CardHeader className="text-center">
+              <CardTitle>No Quiz Available</CardTitle>
+            </CardHeader>
+            <CardContent className="text-center space-y-4">
+              <p className="text-gray-600">There are no quizzes available at the moment.</p>
+              <Button onClick={() => navigate('/dashboard')}>
+                Back to Dashboard
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
   const currentQ = questions[currentQuestion];
   const progress = ((currentQuestion + 1) / questions.length) * 100;
 
@@ -367,8 +482,9 @@ const Quiz = () => {
             Back
           </Button>
           <div className="ml-4 flex-1">
-            <h1 className="text-xl font-bold">Eco Knowledge Quiz</h1>
-            <div className="flex items-center space-x-4 mt-1">
+            <h1 className="text-xl font-bold">{quiz.title}</h1>
+            <p className="text-sm text-gray-600 mt-1">{quiz.description}</p>
+            <div className="flex items-center space-x-4 mt-2">
               <p className="text-sm text-gray-600">Question {currentQuestion + 1} of {questions.length}</p>
               <Badge variant="secondary" className="text-xs">
                 {currentQ.category.charAt(0).toUpperCase() + currentQ.category.slice(1)}
@@ -378,6 +494,9 @@ const Quiz = () => {
                 className="text-xs"
               >
                 {currentQ.difficulty.charAt(0).toUpperCase() + currentQ.difficulty.slice(1)}
+              </Badge>
+              <Badge variant="outline" className="text-xs">
+                {quiz.totalPoints} points
               </Badge>
             </div>
           </div>

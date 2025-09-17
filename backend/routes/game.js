@@ -7,7 +7,8 @@ import {
   getQuizById,
   submitQuiz,
   getUserProgress,
-  getLeaderboard
+  getLeaderboard,
+  getRecentQuizzes
 } from '../controllers/gameController.js';
 
 const router = express.Router();
@@ -29,6 +30,9 @@ router.get('/progress', getUserProgress);
 
 // Leaderboard routes
 router.get('/leaderboard', getLeaderboard);
+
+// Recent quizzes route
+router.get('/recent-quizzes', getRecentQuizzes);
 
 export default router;
 

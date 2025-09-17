@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useGame } from '@/contexts/GameContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,19 +8,36 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Trophy, Leaf, BookOpen, Target, Star, Award, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { getRecentQuizzes } from '@/lib/api';
 
 const Dashboard = () => {
   const { user, logout } = useAuth();
   const { progress, challenges, completeChallenge, awardPointsToUser } = useGame();
   const navigate = useNavigate();
+  const [recentQuizzes, setRecentQuizzes] = useState<any[]>([]);
+  const [loadingQuizzes, setLoadingQuizzes] = useState(true);
 
-  // Using challenges from game context
+  // Load recent quiz results from API
+  useEffect(() => {
+    const loadRecentQuizzes = async () => {
+      try {
+        const response = await getRecentQuizzes(5);
+        if (response.success && response.recentQuizzes) {
+          setRecentQuizzes(response.recentQuizzes);
+        } else {
+          // Fallback to empty array if API fails
+          setRecentQuizzes([]);
+        }
+      } catch (error) {
+        console.error('Error loading recent quizzes:', error);
+        setRecentQuizzes([]);
+      } finally {
+        setLoadingQuizzes(false);
+      }
+    };
 
-  const recentQuizzes = [
-    { id: 1, title: 'Climate Change Basics', score: 85, maxScore: 100, completed: true },
-    { id: 2, title: 'Renewable Energy', score: 92, maxScore: 100, completed: true },
-    { id: 3, title: 'Ocean Conservation', score: 0, maxScore: 100, completed: false },
-  ];
+    loadRecentQuizzes();
+  }, []);
 
   // Using badges from game context
 
@@ -289,25 +306,53 @@ const Dashboard = () => {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4">
-                    {recentQuizzes.map((quiz) => (
-                      <div key={quiz.id} className="flex items-center justify-between p-4 border rounded-lg">
-                        <div>
-                          <h3 className="font-medium">{quiz.title}</h3>
-                          {quiz.completed && (
-                            <p className="text-sm text-gray-600">Score: {quiz.score}/{quiz.maxScore}</p>
-                          )}
+                  {loadingQuizzes ? (
+                    <div className="text-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto"></div>
+                      <p className="text-gray-600 mt-2">Loading recent quizzes...</p>
+                    </div>
+                  ) : recentQuizzes.length === 0 ? (
+                    <div className="text-center py-8">
+                      <BookOpen className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold text-gray-600 mb-2">No Recent Quizzes</h3>
+                      <p className="text-gray-500 mb-4">Complete some quizzes to see your results here!</p>
+                      <Button onClick={() => navigate('/quiz')} variant="default">
+                        Start Your First Quiz
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {recentQuizzes.map((quiz) => (
+                        <div key={quiz.id} className="flex items-center justify-between p-4 border rounded-lg hover:shadow-md transition-shadow">
+                          <div className="flex-1">
+                            <h3 className="font-medium text-gray-900">{quiz.title}</h3>
+                            <p className="text-sm text-gray-600 mb-2">{quiz.description}</p>
+                            <div className="flex items-center space-x-4 text-sm text-gray-500">
+                              <span>Score: {quiz.score}/{quiz.maxScore}</span>
+                              <span>Percentage: {quiz.percentage}%</span>
+                              <span>Points: +{quiz.points}</span>
+                              <span>Category: {quiz.category}</span>
+                            </div>
+                            <div className="text-xs text-gray-400 mt-1">
+                              Completed: {new Date(quiz.completedAt).toLocaleDateString()}
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <Badge 
+                              variant={quiz.percentage >= 90 ? "default" : quiz.percentage >= 70 ? "secondary" : "outline"}
+                              className={
+                                quiz.percentage >= 90 ? "bg-green-100 text-green-800" :
+                                quiz.percentage >= 70 ? "bg-yellow-100 text-yellow-800" :
+                                "bg-red-100 text-red-800"
+                              }
+                            >
+                              {quiz.percentage >= 90 ? "Excellent" : quiz.percentage >= 70 ? "Good" : "Needs Improvement"}
+                            </Badge>
+                          </div>
                         </div>
-                        <div className="flex items-center space-x-2">
-                          {quiz.completed ? (
-                            <Badge variant="default">Completed</Badge>
-                          ) : (
-                            <Button size="sm" onClick={() => navigate('/quiz')}>Start Quiz</Button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>

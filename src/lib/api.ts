@@ -132,6 +132,9 @@ export interface LeaderboardEntry {
   points: number;
   level: number;
   streak: number;
+  badges: number;
+  challengesCompleted: number;
+  quizzesCompleted: number;
   lastActivity: string;
 }
 
@@ -575,6 +578,9 @@ class ApiClient {
             points: 2450,
             level: 12,
             streak: 28,
+            badges: 15,
+            challengesCompleted: 25,
+            quizzesCompleted: 8,
             lastActivity: new Date().toISOString()
           },
           {
@@ -585,7 +591,48 @@ class ApiClient {
             points: 2380,
             level: 11,
             streak: 25,
+            badges: 13,
+            challengesCompleted: 22,
+            quizzesCompleted: 7,
             lastActivity: new Date().toISOString()
+          }
+        ]
+      };
+    }
+  }
+
+  async getRecentQuizzes(limit: number = 5): Promise<ApiResponse<any[]>> {
+    try {
+      return await this.request<any[]>(`/game/recent-quizzes?limit=${limit}`);
+    } catch (error) {
+      console.log('Backend connection failed, using mock recent quizzes');
+      // Return mock recent quizzes if backend is not available
+      return {
+        success: true,
+        recentQuizzes: [
+          {
+            id: 'mock-1',
+            title: 'Climate Change Basics',
+            description: 'Test your knowledge about climate change',
+            category: 'environment',
+            score: 85,
+            maxScore: 100,
+            percentage: 85,
+            points: 170,
+            completedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+            completed: true
+          },
+          {
+            id: 'mock-2',
+            title: 'Renewable Energy',
+            description: 'Learn about sustainable energy sources',
+            category: 'energy',
+            score: 92,
+            maxScore: 100,
+            percentage: 92,
+            points: 184,
+            completedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+            completed: true
           }
         ]
       };
@@ -616,5 +663,6 @@ export const {
   submitQuiz,
   getUserProgress,
   getLeaderboard,
+  getRecentQuizzes,
 } = apiClient;
 

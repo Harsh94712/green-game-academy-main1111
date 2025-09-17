@@ -316,11 +316,37 @@ export const getLeaderboard = async (req, res) => {
       dateFilter = { 'statistics.lastLogin': { $gte: oneMonthAgo } };
     }
     
-    const leaderboard = await UserProgress.find(dateFilter)
-      .populate('user', 'name email avatar')
-      .sort({ totalPoints: -1 })
-      .limit(50)
-      .select('user totalPoints level streak statistics.lastLogin');
+    // Get leaderboard with proper aggregation for better performance
+    const leaderboard = await UserProgress.aggregate([
+      { $match: dateFilter },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'user',
+          foreignField: '_id',
+          as: 'userInfo'
+        }
+      },
+      { $unwind: '$userInfo' },
+      {
+        $project: {
+          user: {
+            name: '$userInfo.name',
+            email: '$userInfo.email',
+            avatar: '$userInfo.avatar'
+          },
+          totalPoints: 1,
+          level: 1,
+          streak: 1,
+          lastActivity: '$statistics.lastLogin',
+          badgesCount: { $size: '$earnedBadges' },
+          challengesCompleted: '$statistics.totalChallengesCompleted',
+          quizzesCompleted: '$statistics.totalQuizzesCompleted'
+        }
+      },
+      { $sort: { totalPoints: -1, lastActivity: -1 } },
+      { $limit: 50 }
+    ]);
     
     res.json({
       success: true,
@@ -332,7 +358,10 @@ export const getLeaderboard = async (req, res) => {
         points: entry.totalPoints,
         level: entry.level,
         streak: entry.streak,
-        lastActivity: entry.statistics.lastLogin
+        badges: entry.badgesCount,
+        challengesCompleted: entry.challengesCompleted,
+        quizzesCompleted: entry.quizzesCompleted,
+        lastActivity: entry.lastActivity
       }))
     });
   } catch (error) {
@@ -340,6 +369,58 @@ export const getLeaderboard = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Server error while fetching leaderboard'
+    });
+  }
+};
+
+// @route   GET /api/game/recent-quizzes
+// @desc    Get recent quiz results for user
+// @access  Private
+export const getRecentQuizzes = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { limit = 5 } = req.query;
+    
+    const userProgress = await UserProgress.findOne({ user: userId })
+      .populate({
+        path: 'completedQuizzes.quiz',
+        select: 'title description category totalPoints timeLimit'
+      })
+      .select('completedQuizzes');
+    
+    if (!userProgress) {
+      return res.json({
+        success: true,
+        recentQuizzes: []
+      });
+    }
+    
+    // Sort by completion date and limit results
+    const recentQuizzes = userProgress.completedQuizzes
+      .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt))
+      .slice(0, parseInt(limit))
+      .map(quiz => ({
+        id: quiz.quiz._id,
+        title: quiz.quiz.title,
+        description: quiz.quiz.description,
+        category: quiz.quiz.category,
+        score: quiz.score,
+        maxScore: quiz.maxScore,
+        percentage: quiz.percentage,
+        points: quiz.points,
+        completedAt: quiz.completedAt,
+        completed: true
+      }));
+    
+    res.json({
+      success: true,
+      recentQuizzes
+    });
+  } catch (error) {
+    console.error('Get recent quizzes error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching recent quizzes'
     });
   }
 };
