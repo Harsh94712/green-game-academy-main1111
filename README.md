@@ -123,14 +123,6 @@ Supported providers:
 2. Connect your repository to Vercel
 3. Deploy automatically with the included `vercel.json` configuration
 
-### Other Platforms
-
-The project can be deployed to any platform that supports static React applications:
-
-- Netlify
-- GitHub Pages
-- AWS S3 + CloudFront
-- Firebase Hosting
 
 ## 🎯 What's Working Right Now
 
